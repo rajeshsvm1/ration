@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"> <!-- ✅ Fix for mobile scaling -->
+  <title>Ration Distribution Reports</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-color: #f0f2f5;
+      --card-bg: #fff;
+      --text-color: #333;
+      --header-bg: linear-gradient(90deg, #007bff, #00c6ff);
+      --table-header-bg: #007bff;
+      --table-header-text: #fff;
+      --mismatch-bg: #ffe0e0;
+      --mismatch-text: #a00;
+    }
+    body.dark {
+      --bg-color: #181a1b;
+      --card-bg: #242526;
+      --text-color: #e4e6eb;
+      --header-bg: linear-gradient(90deg, #1f1f1f, #3a3a3a);
+      --table-header-bg: #444;
+      --table-header-text: #e4e6eb;
+      --mismatch-bg: #5c2c2c;
+      --mismatch-text: #ff8080;
+    }
+    body {
+      font-family: 'Poppins', sans-serif;
+      margin: 0;
+      background: var(--bg-color);
+      color: var(--text-color);
+      transition: background 0.3s, color 0.3s;
+    }
+    header {
+      background: var(--header-bg);
+      padding: 15px;
+      color: #fff;
+      text-align: center;
+      font-size: 1.2em;
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .theme-toggle {
+      background: #fff;
+      color: #007bff;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: 0.3s;
+    }
+    .theme-toggle:hover {
+      background: #e9ecef;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 15px auto;
+      padding: 0 10px;
+    }
+    .upload-box {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    input[type="file"] {
+      padding: 10px;
+      border: 2px dashed #007bff;
+      border-radius: 10px;
+      background: var(--card-bg);
+      cursor: pointer;
+      transition: 0.3s;
+      color: var(--text-color);
+      width: 100%;
+      max-width: 300px;
+    }
+    .cards {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      justify-content: center;
+    }
+    .card {
+      background: var(--card-bg);
+      border-radius: 12px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.08);
+      padding: 15px;
+      flex: 1 1 450px;
+      transition: transform 0.2s, background 0.3s;
+    }
+    .card:hover {
+      transform: translateY(-3px);
+    }
+    h3 {
+      margin-top: 0;
+      text-align: center;
+      font-weight: 600;
+      color: var(--text-color);
+      font-size: 1em;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-top: 10px;
+      font-size: 0.85em;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 6px;
+      text-align: center;
+      word-break: break-word; /* ✅ so text wraps nicely on small screens */
+    }
+    th {
+      background: var(--table-header-bg);
+      color: var(--table-header-text);
+    }
+    tr:nth-child(even) {
+      background: rgba(0,0,0,0.03);
+    }
+    tr.total-row {
+      font-weight: bold;
+      background: rgba(0,0,0,0.08);
+    }
+    tr.mismatch-row {
+      background: var(--mismatch-bg);
+      color: var(--mismatch-text);
+      font-weight: 600;
+    }
+    .multiplier-box {
+      text-align: center;
+      margin-bottom: 10px;
+    }
+    .multiplier-box input {
+      width: 60px;
+      padding: 5px;
+      font-size: 1em;
+      text-align: center;
+      border: 2px solid #007bff;
+      border-radius: 6px;
+      background: var(--card-bg);
+      color: var(--text-color);
+    }
+    @media (max-width: 600px) {
+      header {
+        flex-direction: column;
+        font-size: 1em;
+        gap: 8px;
+      }
+      .cards {
+        flex-direction: column; /* ✅ stack cards vertically on mobile */
+      }
+      .card {
+        flex: 1 1 100%;
+      }
+      table, th, td {
+        font-size: 0.75em;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    📊 Ration Distribution Reports
+    <button class="theme-toggle" onclick="toggleTheme()">🌙 Dark</button>
+  </header>
+  <div class="container">
+    <div class="upload-box">
+      <input type="file" id="inputFile" accept=".xls,.xlsx" />
+    </div>
+    <div class="cards">
+      <div class="card" id="phTable"></div>
+      <div class="card" id="aayTable"></div>
+      <div class="card" id="memberTable"></div>
+      <div class="card">
+        <div class="multiplier-box">
+          <label><b>Rice should be</b> 
+            <input type="number" id="multiplierInput" value="4" min="1" /> 
+            × Wheat
+          </label>
+        </div>
+        <div id="mismatchTable"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let globalData = [];
+    let darkMode = false;
+
+    document.getElementById('inputFile').addEventListener('change', handleFile, false);
+    document.getElementById('multiplierInput').addEventListener('input', updateMismatch);
+
+    function toggleTheme() {
+      darkMode = !darkMode;
+      document.body.classList.toggle("dark", darkMode);
+      document.querySelector(".theme-toggle").innerText = darkMode ? "🌞 Light" : "🌙 Dark";
+    }
+
+    function handleFile(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function (event) {
+        const data = new Uint8Array(event.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+        let headerRowIndex = -1;
+        for (let i = 0; i < json.length; i++) {
+          const rowText = json[i].join(" ").toLowerCase();
+          if (rowText.includes("date of transaction") && rowText.includes("rice")) {
+            headerRowIndex = i;
+            break;
+          }
+        }
+        if (headerRowIndex === -1) {
+          alert("Could not find the proper header row.");
+          return;
+        }
+
+        const headers = json[headerRowIndex].map(h => (h || "").toString().trim().toLowerCase());
+        const dateIdx     = headers.findIndex(h => h.includes("date of transaction"));
+        const riceIdx     = headers.findIndex(h => h.includes("rice"));
+        const wheatIdx    = headers.findIndex(h => h.includes("wheat"));
+        const categoryIdx = headers.findIndex(h => h.includes("cardtype"));
+        const memberIdx   = headers.findIndex(h => h.includes("member name"));
+        const rationIdx   = headers.findIndex(h => h.includes("rationcard no"));
+
+        if ([dateIdx,riceIdx,wheatIdx,categoryIdx,memberIdx,rationIdx].includes(-1)) {
+          alert("Missing required columns.\nHeaders found: " + headers.join(", "));
+          return;
+        }
+
+        let phTotals = {}, aayTotals = {}, memberCounts = {};
+        globalData = [];
+
+        json.slice(headerRowIndex + 1).forEach(row => {
+          let rawDate = row[dateIdx] || "";
+          let formattedDate = rawDate instanceof Date ? rawDate.toISOString().split("T")[0] : rawDate.toString().split(" ")[0];
+          let rice = parseFloat(row[riceIdx]) || 0;
+          let wheat = parseFloat(row[wheatIdx]) || 0;
+          const category = (row[categoryIdx] || "").toString().trim().toUpperCase();
+          const member = (row[memberIdx] || "").toString().trim();
+          const ration = (row[rationIdx] || "").toString().trim();
+
+          globalData.push({date: formattedDate, name: member, ration: ration, rice: rice, wheat: wheat});
+
+          if (category.includes("P.H")) {
+            if (!phTotals[formattedDate]) phTotals[formattedDate] = { rice: 0, wheat: 0 };
+            phTotals[formattedDate].rice += rice;
+            phTotals[formattedDate].wheat += wheat;
+          } else if (category.includes("AAY")) {
+            if (!aayTotals[formattedDate]) aayTotals[formattedDate] = { rice: 0, wheat: 0 };
+            aayTotals[formattedDate].rice += rice;
+            aayTotals[formattedDate].wheat += wheat;
+          }
+
+          if (member) {
+            if (!memberCounts[formattedDate]) memberCounts[formattedDate] = new Set();
+            memberCounts[formattedDate].add(member);
+          }
+        });
+
+        let phRows = Object.keys(phTotals).map(d => ({ date: d, ...phTotals[d] }))
+                     .sort((a,b) => new Date(a.date) - new Date(b.date));
+        let aayRows = Object.keys(aayTotals).map(d => ({ date: d, ...aayTotals[d] }))
+                      .sort((a,b) => new Date(a.date) - new Date(b.date));
+        let memberRows = Object.keys(memberCounts).map(d => ({ date: d, count: memberCounts[d].size }))
+                          .sort((a,b) => new Date(a.date) - new Date(b.date));
+
+        renderRiceWheatTable("phTable", phRows, "📌 P.H. Report");
+        renderRiceWheatTable("aayTable", aayRows, "📌 AAY Report");
+        renderMemberTable("memberTable", memberRows, "👥 Member Count Report");
+        updateMismatch();
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function renderRiceWheatTable(containerId, rows, title) {
+      let totalRice = 0, totalWheat = 0;
+      let html = `<h3>${title}</h3><table><tr><th>Date</th><th>Rice (Kg)</th><th>Wheat (Kg)</th></tr>`;
+      rows.forEach(r => {
+        totalRice += r.rice; totalWheat += r.wheat;
+        html += `<tr><td>${r.date}</td><td>${r.rice}</td><td>${r.wheat}</td></tr>`;
+      });
+      html += `<tr class="total-row"><td>Total</td><td>${totalRice}</td><td>${totalWheat}</td></tr></table>`;
+      document.getElementById(containerId).innerHTML = html;
+    }
+
+    function renderMemberTable(containerId, rows, title) {
+      let totalMembers = 0;
+      let html = `<h3>${title}</h3><table><tr><th>Date</th><th>Unique Members</th></tr>`;
+      rows.forEach(r => {
+        totalMembers += r.count;
+        html += `<tr><td>${r.date}</td><td>${r.count}</td></tr>`;
+      });
+      html += `<tr class="total-row"><td>Total</td><td>${totalMembers}</td></tr></table>`;
+      document.getElementById(containerId).innerHTML = html;
+    }
+
+    function updateMismatch() {
+      const multiplier = parseInt(document.getElementById("multiplierInput").value) || 4;
+      let mismatches = [];
+      globalData.forEach(r => {
+        if (r.wheat > 0 && r.rice !== multiplier * r.wheat) {
+          mismatches.push(r);
+        }
+      });
+      renderMismatchTable("mismatchTable", mismatches, `⚠️ Mismatch Report (Rice ≠ ${multiplier} × Wheat)`);
+    }
+
+    function renderMismatchTable(containerId, rows, title) {
+      let html = `<h3>${title}</h3><table><tr><th>Date</th><th>Member</th><th>Ration Card</th><th>Rice (Kg)</th><th>Wheat (Kg)</th></tr>`;
+      if (rows.length === 0) {
+        html += `<tr><td colspan="5">✅ No mismatches found</td></tr>`;
+      } else {
+        rows.forEach(r => {
+          html += `<tr class="mismatch-row"><td>${r.date}</td><td>${r.name}</td><td>${r.ration}</td><td>${r.rice}</td><td>${r.wheat}</td></tr>`;
+        });
+      }
+      html += "</table>";
+      document.getElementById(containerId).innerHTML = html;
+    }
+  </script>
+</body>
+</html>
